@@ -72,7 +72,9 @@ The agent sends UTF-8 JSON with at most 100 cards and 250 KB per bridge request.
 }
 ```
 
-Ratings are ordinal observations, not a style fingerprint. Current instructions, the writer's words, and supplied evidence outrank any inferred preference. The [agent runbook](docs/agent-runbook.md) describes controlled contrasts, holdouts, revision, article consent, and recovery.
+Ratings are ordinal observations, not a style fingerprint. Current instructions, the writer's words, and supplied evidence outrank any inferred preference. Before a new technical X post, blog or article, the agent retrieves explicitly approved, relevant rules from MCP `get_state` at `structuredContent.data.context.voiceCard.confirmedRules`, or from `python3 bridge.py status` at `context.voiceCard.confirmedRules`. `hypothesesToTest` stays tentative. The paired browser must be connected long enough to synchronize edits; if that context is missing or stale, ask the writer to keep it open and confirm before using it. A user-initiated handoff export exposes the same sections under `voiceCard`.
+
+The [agent runbook](docs/agent-runbook.md) describes how to test transfer: fix a fresh source, claim and audience; compare baseline and rule-adapted drafts one blind sentence at a time; then read a real stitched paragraph or section with the writer. Distinguish voice from factual accuracy, clarity and flow. A preference requires multiple controlled contrasts, a fresh holdout, an explicit author approval and a counterexample before it becomes a narrow register-specific instruction. This is user-controlled prompt context, not fine-tuning or an automatically learned profile.
 
 ## Development
 

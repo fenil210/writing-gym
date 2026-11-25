@@ -172,6 +172,20 @@ async function main() {
     assert.equal(data.events[0].cardId, 'agent-card');
     const mcpFeedback = await tool('get_feedback', { after: 0 });
     assert.equal(mcpFeedback.events[0].value, 2);
+    await until(async () => Boolean((await tool('get_state', {})).context.voiceCard), 'voice context synchronized');
+    assert.deepEqual((await tool('get_state', {})).context.voiceCard.confirmedRules, [],
+      'a single score must not create a rule');
+    document.querySelector('#rule').value = 'Use a named actor when the register calls for it.';
+    document.querySelector('#scope').value = 'Technical blog';
+    document.querySelector('#positive').value = 'card-positive';
+    document.querySelector('#counterexample').value = 'card-counterexample';
+    document.querySelector('#add-rule').onclick();
+    await until(async () => (await tool('get_state', {})).context.voiceCard.confirmedRules.length === 1,
+      'author-approved rule synchronized');
+    const guide = (await tool('get_state', {})).context.voiceCard.confirmedRules[0];
+    assert.equal(guide.scope, 'Technical blog');
+    assert.equal(guide.positive, 'card-positive');
+    assert.equal(guide.counterexample, 'card-counterexample');
     const duplicate = await fetch(base + '/api/events', {
       method: 'POST', headers: { Authorization: 'Bearer ' + session.token, 'Content-Type': 'application/json' },
       body: JSON.stringify(data.events[0])
