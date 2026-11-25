@@ -1,6 +1,128 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Writing Gym</title><link rel="stylesheet" href="style.css"><script defer src="core.js"></script><script defer src="fixtures.js"></script><script defer src="app.js"></script></head>
-<body><header><div class="brand"><span class="mark">w.</span><div><strong>Writing Gym</strong><span class="sub">A little practice, one sentence at a time.</span></div></div><nav aria-label="Modes"><button data-page="practice" class="active">Calibration</button><button data-page="article">Article Lab</button><button data-page="library">Data &amp; handoff</button></nav></header>
-<main><section id="practice" class="page"><div class="eyebrow"><span>CALIBRATION</span><span id="progress"></span></div><div class="progress"><i id="bar"></i></div><div id="card-area"></div><div id="after" class="after" hidden><span id="scored"></span><label>Optional reason <select id="reason"><option value="">No reason</option><option>wording</option><option>clarity</option><option>too vague</option><option>too much setup</option><option>wrong detail</option><option>weak bridge</option><option>feels put on</option></select></label><label>Note <input id="note" maxlength="500" placeholder="A few words, if useful"></label></div><div class="bottom"><button id="undo" class="quiet">↶ Undo</button><span>Keys 1–4 to score · S to skip · Z to undo</span></div><p class="privacy">Saved in this browser only. No account, sync, tracking, or automatic agent connection.</p></section>
-<section id="article" class="page" hidden><div class="eyebrow">ARTICLE LAB <span>Practice a generic round or bring your own</span></div><h1>Build one line at a time.</h1><p class="lead">Agree on the thinking with your agent first. A score is feedback; accepting a line is a separate decision.</p><div class="panel"><h2>Article context</h2><div class="grid"><label>Topic<input data-article="topic" maxlength="500"></label><label>Audience<input data-article="audience" maxlength="500"></label><label>Central claim<textarea data-article="claim" maxlength="1500"></textarea></label><label>Evidence / sources<textarea data-article="evidence" maxlength="3000"></textarea></label><label class="wide">Outline / section plan<textarea data-article="outline" maxlength="3000"></textarea></label></div><button id="demo" class="quiet">Load generic example</button></div><div class="panel"><h2>Next sentence</h2><p class="hint">Previous accepted sentence</p><blockquote id="previous">None yet.</blockquote><label>Candidate sentence<textarea id="candidate" maxlength="2000" placeholder="Paste or write a single sentence"></textarea></label><div class="scores compact" id="article-scores"><button data-score="1"><b>1</b> No</button><button data-score="2"><b>2</b> Needs a rewrite</button><button data-score="3"><b>3</b> Works</button><button data-score="4"><b>4</b> I'd write it</button></div><p id="article-rating" class="hint">Choose a score. Scores 1–2 call for a different line; 3–4 can be accepted separately.</p><div class="row"><label>Section <input id="section-name" maxlength="100" placeholder="e.g. Opening"></label><button id="accept">Accept line</button><button id="try-again" class="quiet">Try a different line</button></div></div><div class="panel"><h2>Accepted lines</h2><p class="hint">Locked until reopened. Read each stitched section for rhythm and logic, then read the whole article before publication. A strong sentence alone cannot certify an article.</p><div id="manuscript"></div><button id="whole-read" class="quiet">Show whole-article read</button><div id="whole"></div></div></section>
-<section id="library" class="page" hidden><div class="eyebrow">DATA &amp; HANDOFF</div><h1>You’re in control.</h1><p class="lead">Nothing leaves this browser unless you export it. Exports can contain private writing and feedback; share them intentionally. There is no cross-device sync.</p><div class="panel"><h2>Rounds</h2><div id="round-list"></div><label>Import a versioned deck or backup<textarea id="import-text" placeholder="Paste JSON here" spellcheck="false"></textarea></label><div class="row"><input id="import-file" type="file" accept="application/json,.json"><button id="import">Validate &amp; import</button></div><p class="hint">A deck with an existing ID is never replaced. Restoring a backup requires explicit confirmation and replaces local data.</p><p id="import-status" role="status"></p></div><div class="panel"><h2>Voice card</h2><p class="hint">Only add a rule after reviewing evidence and a fresh holdout with your agent. Your words and edits outrank any score. Imported deck text never edits these fields.</p><label>Confirmed narrow rule<textarea id="rule" maxlength="1000" placeholder="What should change in a future sentence?"></textarea></label><div class="grid"><label>Scope<input id="scope" maxlength="300" placeholder="When does this apply?"></label><label>Positive example / card ID<input id="positive" maxlength="500"></label><label>Counterexample / card ID<input id="counterexample" maxlength="500"></label></div><button id="add-rule">Add confirmed rule</button><div id="rules"></div><label>Hypotheses to test<textarea id="hypotheses" maxlength="3000" placeholder="Tentative ideas, not instructions"></textarea></label></div><div class="panel"><h2>Export &amp; backup</h2><p class="hint">Preview the private handoff first. Backup restores everything, including article drafts. Agent export includes observations, card metadata, your voice card, and the Article Lab handoff.</p><div class="row"><button id="preview-agent">Preview agent handoff</button><button id="preview-backup" class="quiet">Preview backup</button><button id="download" class="quiet" disabled>Download preview</button></div><textarea id="export-preview" readonly aria-label="Export preview" placeholder="Export preview appears here"></textarea><button id="reset" class="danger">Reset all local data</button></div></section></main><footer>Writing Gym · offline by design</footer></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Writing Gym</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="core.js"></script>
+  <script defer src="fixtures.js"></script>
+  <script defer src="app.js"></script>
+  <script defer src="bridge-client.js"></script>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="mark">w.</span>
+      <div><strong>Writing Gym</strong><span class="sub">A little practice, one sentence at a time.</span></div>
+    </div>
+    <nav aria-label="Modes">
+      <button data-page="practice" class="active">Calibration</button>
+      <button data-page="article">Article Lab</button>
+      <button data-page="library">Data &amp; handoff</button>
+    </nav>
+  </header>
+  <main>
+    <section id="practice" class="page">
+      <div class="eyebrow"><span>CALIBRATION</span><span id="progress"></span></div>
+      <div class="progress"><i id="bar"></i></div>
+      <div id="bridge-status" class="bridge-status" role="status">Checking for a local agent bridge…</div>
+      <div id="card-area"></div>
+      <div class="demo-controls">
+        <button id="load-demo" class="quiet">Try isolated demo rounds</button>
+        <span>Demo scores stay in this browser and are not sent to Dex.</span>
+      </div>
+      <div id="after" class="after" hidden>
+        <span id="scored"></span>
+        <label>Optional reason
+          <select id="reason">
+            <option value="">No reason</option><option>wording</option><option>clarity</option>
+            <option>too vague</option><option>too much setup</option><option>wrong detail</option>
+            <option>weak bridge</option><option>feels put on</option>
+          </select>
+        </label>
+        <label>Note <input id="note" maxlength="500" placeholder="A few words, if useful"></label>
+      </div>
+      <div class="bottom"><button id="undo" class="quiet">↶ Undo</button><span>Keys 1–4 to score · S to skip · Z to undo</span></div>
+      <p class="privacy">Paired feedback stays on this computer. No account, sync, tracking, or automatic agent wake.</p>
+    </section>
+    <section id="article" class="page" hidden>
+      <div class="eyebrow">ARTICLE LAB <span>Practice a generic round or bring your own</span></div>
+      <h1>Build one line at a time.</h1>
+      <p class="lead">Agree on the thinking with your agent first. A score is feedback; accepting a line is a separate decision.</p>
+      <div class="panel">
+        <h2>Article context</h2>
+        <div class="grid">
+          <label>Topic<input data-article="topic" maxlength="500"></label>
+          <label>Audience<input data-article="audience" maxlength="500"></label>
+          <label>Central claim<textarea data-article="claim" maxlength="1500"></textarea></label>
+          <label>Evidence / sources<textarea data-article="evidence" maxlength="3000"></textarea></label>
+          <label class="wide">Outline / section plan<textarea data-article="outline" maxlength="3000"></textarea></label>
+        </div>
+        <button id="new-article" class="quiet">Start a private article</button>
+        <button id="demo" class="quiet">Load isolated generic example</button>
+        <p class="hint">The generic example stays in this browser and is not sent to Dex.</p>
+      </div>
+      <div class="panel">
+        <h2>Next sentence</h2>
+        <p class="hint">Previous accepted sentence</p>
+        <blockquote id="previous">None yet.</blockquote>
+        <label>Candidate sentence<textarea id="candidate" maxlength="2000" placeholder="Paste or write a single sentence"></textarea></label>
+        <div class="scores compact" id="article-scores">
+          <button data-score="1"><b>1</b> No</button>
+          <button data-score="2"><b>2</b> Needs a rewrite</button>
+          <button data-score="3"><b>3</b> Works</button>
+          <button data-score="4"><b>4</b> I'd write it</button>
+        </div>
+        <p id="article-rating" class="hint">Choose a score. Scores 1–2 call for a different line; 3–4 can be accepted separately.</p>
+        <div class="row">
+          <label>Section <input id="section-name" maxlength="100" placeholder="e.g. Opening"></label>
+          <button id="accept">Accept line</button><button id="try-again" class="quiet">Try a different line</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Accepted lines</h2>
+        <p class="hint">Locked until reopened. Read each stitched section for rhythm and logic, then read the whole article before publication. A strong sentence alone cannot certify an article.</p>
+        <div id="manuscript"></div><button id="whole-read" class="quiet">Show whole-article read</button><div id="whole"></div>
+      </div>
+    </section>
+    <section id="library" class="page" hidden>
+      <div class="eyebrow">DATA &amp; HANDOFF</div>
+      <h1>You’re in control.</h1>
+      <p class="lead">Paired feedback goes only to your local bridge. Exports can contain private writing and feedback; share them intentionally. There is no cross-device sync.</p>
+      <div class="panel">
+        <h2>Rounds</h2><div id="round-list"></div>
+        <label>Import a versioned deck or backup<textarea id="import-text" placeholder="Paste JSON here" spellcheck="false"></textarea></label>
+        <div class="row"><input id="import-file" type="file" accept="application/json,.json"><button id="import">Validate &amp; import</button></div>
+        <p class="hint">A deck with an existing ID is never replaced. Restoring a backup requires explicit confirmation and replaces local data.</p>
+        <p id="import-status" role="status"></p>
+      </div>
+      <div class="panel">
+        <h2>Voice card</h2>
+        <p class="hint">Only add a rule after reviewing evidence and a fresh holdout with your agent. Your words and edits outrank any score. Imported deck text never edits these fields.</p>
+        <label>Confirmed narrow rule<textarea id="rule" maxlength="1000" placeholder="What should change in a future sentence?"></textarea></label>
+        <div class="grid">
+          <label>Scope<input id="scope" maxlength="300" placeholder="When does this apply?"></label>
+          <label>Positive example / card ID<input id="positive" maxlength="500"></label>
+          <label>Counterexample / card ID<input id="counterexample" maxlength="500"></label>
+        </div>
+        <button id="add-rule">Add confirmed rule</button><div id="rules"></div>
+        <label>Hypotheses to test<textarea id="hypotheses" maxlength="3000" placeholder="Tentative ideas, not instructions"></textarea></label>
+      </div>
+      <div class="panel">
+        <h2>Export &amp; backup</h2>
+        <p class="hint">Preview the private handoff first. Backup restores everything, including article drafts. Agent export includes observations, card metadata, your voice card, and the Article Lab handoff.</p>
+        <div class="row">
+          <button id="preview-agent">Preview agent handoff</button>
+          <button id="preview-backup" class="quiet">Preview backup</button>
+          <button id="download" class="quiet" disabled>Download preview</button>
+        </div>
+        <textarea id="export-preview" readonly aria-label="Export preview" placeholder="Export preview appears here"></textarea>
+        <button id="reset" class="danger">Reset all local data</button>
+      </div>
+    </section>
+  </main>
+  <footer>Writing Gym · local by design</footer>
+</body>
+</html>

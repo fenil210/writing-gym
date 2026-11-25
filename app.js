@@ -1,32 +1,461 @@
 'use strict';
-const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)], KEY='writing-gym-v1';
-let state, active='starter-1', last=null, previewName='writing-gym.json';
-try{const raw=localStorage.getItem(KEY);state=raw?Gym.validateBackup({kind:'writing-gym-backup',version:1,state:Gym.parse(raw)}):Gym.blank(FIXTURES)}catch{state=Gym.blank(FIXTURES);alert('Local data could not be read. It has not been overwritten. Export it from browser storage before making changes.')}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch{alert('Could not save locally. Browser storage may be unavailable or full.')}}
-function node(tag,txt,cls){let n=document.createElement(tag);if(txt!==undefined)n.textContent=txt;if(cls)n.className=cls;return n}
-function button(txt,fn,cls='quiet'){let b=node('button',txt,cls);b.addEventListener('click',fn);return b}
-function page(name){$$('.page').forEach(p=>p.hidden=p.id!==name);$$('nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));if(name==='practice')renderPractice();if(name==='library')renderLibrary();if(name==='article')renderArticle()}
-$$('nav button').forEach(b=>b.onclick=()=>page(b.dataset.page));
-function renderPractice(){let d=state.decks.find(d=>d.id===active)||state.decks[0];if(!d){$('#card-area').textContent='Import a deck to begin.';return}active=d.id;let r=Gym.round(state,d.id), area=$('#card-area');area.replaceChildren();$('#progress').textContent=d.title+' · '+Math.min(r.cursor+1,r.order.length)+' / '+r.order.length;$('#bar').style.width=(100*r.cursor/r.order.length)+'%';$('#undo').disabled=!r.history.length;
-if(r.cursor>=r.order.length){let card=node('div',undefined,'card');card.append(node('div','ROUND COMPLETE','label'),node('p','Nice work. Your observations are ready when you are.','sentence'));let p=node('p','Hypotheses and variants are available in the private agent export. Review them with your agent before proposing any rule.','hint');card.append(p,button('Data & handoff',()=>page('library')));area.append(card);return}
-let c=d.cards.find(c=>c.id===r.order[r.cursor]), card=node('div',undefined,'card');if(c.context)card.append(node('div',c.context,'label'));card.append(node('p',c.sentence,'sentence'));area.append(card,node('p','How does this sentence read?','prompt'));let scores=node('div',undefined,'scores');['No','Needs a rewrite','Works',"I’d write it"].forEach((label,i)=>{let b=document.createElement('button');b.append(node('b',String(i+1)),document.createTextNode(label));b.onclick=()=>score(i+1);scores.append(b)});area.append(scores,button('Skip this one',()=>score(null)));area.lastChild.style.marginTop='12px';}
-function score(n){let d=state.decks.find(x=>x.id===active),r=Gym.round(state,active);if(r.cursor>=r.order.length)return;let id=r.order[r.cursor];Gym.act(r,n);last=n===null?null:{deck:active,id};$('#after').hidden=!last;if(last){$('#scored').textContent='Saved '+n+' / 4 · add a reason if you like';$('#reason').value='';$('#note').value=''}save();renderPractice()}
-$('#reason').onchange=()=>{if(last&&state.rounds[last.deck].ratings[last.id]){state.rounds[last.deck].ratings[last.id].reason=$('#reason').value;save()}};$('#note').oninput=()=>{if(last&&state.rounds[last.deck].ratings[last.id]){state.rounds[last.deck].ratings[last.id].note=$('#note').value;save()}};
-function undo(){let r=Gym.round(state,active);if(Gym.undo(r)){last=null;$('#after').hidden=true;save();renderPractice()}}$('#undo').onclick=undo;
-document.addEventListener('keydown',e=>{if(e.altKey||e.ctrlKey||e.metaKey||e.repeat||e.target.closest('input,textarea,select,[contenteditable="true"]'))return;if(!$('#practice').hidden){if(/^[1-4]$/.test(e.key))score(Number(e.key));else if(e.key.toLowerCase()==='s')score(null);else if(e.key.toLowerCase()==='z')undo()}});
-function renderLibrary(){let list=$('#round-list');list.replaceChildren();state.decks.forEach(d=>{let r=Gym.round(state,d.id),div=node('div',undefined,'entry');div.append(node('strong',d.title),node('p',`${r.cursor} of ${d.cards.length} seen · ${Object.keys(r.ratings).length} scored`,'status'),button('Open round',()=>{active=d.id;last=null;$('#after').hidden=true;page('practice')}));list.append(div)});let rules=$('#rules');rules.replaceChildren();state.rules.forEach((r,i)=>{let div=node('div',undefined,'entry');div.append(node('strong',r.rule),node('p',`Scope: ${r.scope}\nPositive: ${r.positive}\nCounterexample: ${r.counterexample}`),button('Remove / revise',()=>{if(confirm('Remove this rule? You can add a revised rule.')){state.rules.splice(i,1);save();renderLibrary()}}));rules.append(div)});$('#hypotheses').value=state.hypotheses}
-$('#hypotheses').oninput=e=>{state.hypotheses=e.target.value;save()};$('#add-rule').onclick=()=>{let rule=$('#rule').value.trim(),scope=$('#scope').value.trim(),positive=$('#positive').value.trim(),counterexample=$('#counterexample').value.trim();if(!rule||!scope||!positive||!counterexample){alert('Add the rule, scope, positive example, and counterexample.');return}state.rules.push({rule,scope,positive,counterexample});['rule','scope','positive','counterexample'].forEach(id=>$('#'+id).value='');save();renderLibrary()};
-$('#import-file').onchange=async e=>{let f=e.target.files[0];if(!f)return;if(f.size>Gym.MAX){$('#import-status').textContent='File exceeds 5 MB.';return}$('#import-text').value=await f.text()};
-$('#import').onclick=()=>{try{let x=Gym.parse($('#import-text').value);if(x.kind==='writing-gym-deck'){Gym.validateDeck(x);if(state.decks.some(d=>d.id===x.id))throw Error('Deck ID already exists; existing work was not changed.');let ids=new Set(state.decks.flatMap(d=>d.cards.map(c=>c.id)));if(x.cards.some(c=>ids.has(c.id)))throw Error('A card ID already exists in another deck.');state.decks.push(x);save();$('#import-status').textContent='Deck imported. Open it below.';renderLibrary()}else if(x.kind==='writing-gym-backup'){let restored=Gym.validateBackup(x);if(!confirm('Replace all local data with this backup? Export a backup first if needed.'))return;state=restored;active=state.decks[0]?.id;last=null;$('#after').hidden=true;save();$('#import-status').textContent='Backup restored.';renderLibrary()}else throw Error('Expected a version 1 deck or backup.')}catch(e){$('#import-status').textContent=e.message}};
-function preview(x,name){$('#export-preview').value=JSON.stringify(x,null,2);previewName=name;$('#download').disabled=false}
-$('#preview-agent').onclick=()=>preview(Gym.handoff(state),'writing-gym-handoff.json');$('#preview-backup').onclick=()=>preview({kind:'writing-gym-backup',version:1,state},'writing-gym-backup.json');$('#download').onclick=()=>{let url=URL.createObjectURL(new Blob([$('#export-preview').value],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=previewName;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};$('#reset').onclick=()=>{if(confirm('Delete all Writing Gym data in this browser? Export a backup first.')){localStorage.removeItem(KEY);state=Gym.blank(FIXTURES);active='starter-1';last=null;$('#after').hidden=true;$('#export-preview').value='';$('#download').disabled=true;renderLibrary()}};
-const article=()=>state.article;
-$$('[data-article]').forEach(el=>el.oninput=()=>{article()[el.dataset.article]=el.value;save()});$('#candidate').oninput=e=>{article().candidate=e.target.value;article().candidateScore=null;save();renderArticleStatus()};$('#section-name').oninput=e=>{article().section=e.target.value;save();renderArticleStatus()};
-$('#demo').onclick=()=>{if((article().topic||article().lines.length)&&!confirm('Replace this article with the generic practice example? Export a backup first if needed.'))return;state.article={topic:'A small release checklist',audience:'A software team',claim:'A short checklist can make routine releases easier to coordinate.',evidence:'Example premise for practice only; verify any real claim.',outline:'Opening: name the coordination problem. Middle: describe a short checklist. Close: note its limits.',candidate:'A release takes coordination across several small steps.',candidateScore:null,section:'Opening',lines:[],attempts:[],demoQueue:[{section:'Middle',sentence:'A short checklist can make those steps visible to everyone involved.'},{section:'Close',sentence:'The checklist still needs to change when the release process changes.'}]};save();renderArticle()};
-$('#article-scores').onclick=e=>{let b=e.target.closest('[data-score]');if(!b)return;if(!article().candidate.trim()){alert('Add a candidate sentence first.');return}article().candidateScore=Number(b.dataset.score);save();renderArticleStatus()};
-function renderArticleStatus(){let s=article().candidateScore;$('#article-rating').textContent=s?`Scored ${s} / 4. ${s<3?'Try a different line.':'Accept separately if this is the line you want.'}`:'Choose a score. Scores 1–2 call for a different line; 3–4 can be accepted separately.';$('#accept').disabled=!(s>=3&&article().candidate.trim()&&article().section.trim())}
-$('#try-again').onclick=()=>{let a=article();if(a.candidate.trim())a.attempts.push({sentence:a.candidate,score:a.candidateScore,section:a.section});a.candidate='';a.candidateScore=null;save();renderArticle()};
-$('#accept').onclick=()=>{let a=article();if(!(a.candidateScore>=3&&a.candidate.trim()&&a.section.trim()))return;let line={id:'line-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),section:a.section,sentence:a.candidate,score:a.candidateScore};if(Number.isInteger(a.editIndex)){a.lines.splice(a.editIndex,0,line);delete a.editIndex}else a.lines.push(line);a.candidate='';a.candidateScore=null;if(a.demoQueue?.length){let next=a.demoQueue.shift();a.candidate=next.sentence;a.section=next.section}save();renderArticle()};
-function renderArticle(){let a=article();$$('[data-article]').forEach(el=>el.value=a[el.dataset.article]||'');$('#candidate').value=a.candidate||'';$('#section-name').value=a.section||'';$('#previous').textContent=(Number.isInteger(a.editIndex)?a.lines[a.editIndex-1]:a.lines.at(-1))?.sentence||'None yet.';renderArticleStatus();let list=$('#manuscript');list.replaceChildren();if(!a.lines.length)list.append(node('p','No accepted lines yet.','hint'));let sections=[...new Set(a.lines.map(l=>l.section))];sections.forEach(section=>{let div=node('div',undefined,'entry');div.append(node('strong',section),node('p',a.lines.filter(l=>l.section===section).map(l=>l.sentence).join(' ')));a.lines.filter(l=>l.section===section).forEach(l=>div.append(button('Reopen: '+l.sentence.slice(0,35),()=>{if(Number.isInteger(a.editIndex)){alert('Finish the reopened line first.');return}if(a.candidate.trim()&&!confirm('Replace the current candidate with this line?'))return;if(!confirm('Reopen this accepted line? It will leave the manuscript until accepted again.'))return;a.editIndex=a.lines.findIndex(x=>x.id===l.id);a.lines.splice(a.editIndex,1);a.candidate=l.sentence;a.section=l.section;a.candidateScore=null;save();renderArticle()})));list.append(div)});$('#whole').replaceChildren()}
-$('#whole-read').onclick=()=>{$('#whole').replaceChildren(node('p',article().lines.map(l=>l.sentence).join(' ')))};
+
+const $ = selector => document.querySelector(selector);
+const $$ = selector => [...document.querySelectorAll(selector)];
+const KEY = 'writing-gym-v1';
+let state;
+let active;
+let last = null;
+let previewName = 'writing-gym.json';
+
+try {
+  const raw = localStorage.getItem(KEY);
+  state = raw
+    ? Gym.validateBackup({ kind: 'writing-gym-backup', version: 1, state: Gym.parse(raw) })
+    : Gym.blank([]);
+} catch {
+  state = Gym.blank([]);
+  alert('Local data could not be read. It has not been overwritten. Export it from browser storage before making changes.');
+}
+
+function restoreActiveRound() {
+  active = state.decks.some(deck => deck.id === state.selectedRound)
+    ? state.selectedRound : state.decks[0]?.id;
+  state.selectedRound = active || null;
+}
+
+function save() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    alert('Could not save locally. Browser storage may be unavailable or full.');
+  }
+}
+
+function node(tag, text, className) {
+  const element = document.createElement(tag);
+  if (text !== undefined) element.textContent = text;
+  if (className) element.className = className;
+  return element;
+}
+
+function button(text, action, className = 'quiet') {
+  const element = node('button', text, className);
+  element.addEventListener('click', action);
+  return element;
+}
+
+function page(name) {
+  $$('.page').forEach(element => element.hidden = element.id !== name);
+  $$('nav button').forEach(element => element.classList.toggle('active', element.dataset.page === name));
+  if (name === 'practice') renderPractice();
+  if (name === 'library') renderLibrary();
+  if (name === 'article') renderArticle();
+}
+
+$$('nav button').forEach(element => element.onclick = () => page(element.dataset.page));
+
+function renderPractice() {
+  const deck = state.decks.find(item => item.id === active) || state.decks[0];
+  if (!deck) {
+    $('#progress').textContent = 'Waiting for Dex';
+    $('#bar').style.width = '0%';
+    $('#undo').disabled = true;
+    $('#card-area').replaceChildren(node('div', 'Waiting for Dex to send a private round.', 'card'));
+    return;
+  }
+  active = deck.id;
+  const round = Gym.round(state, deck.id);
+  const area = $('#card-area');
+  area.replaceChildren();
+  $('#progress').textContent = `${deck.title} · ${Math.min(round.cursor + 1, round.order.length)} / ${round.order.length}`;
+  $('#bar').style.width = `${100 * round.cursor / round.order.length}%`;
+  $('#undo').disabled = !round.history.length;
+
+  if (round.cursor >= round.order.length) {
+    const card = node('div', undefined, 'card');
+    card.append(node('div', 'ROUND COMPLETE', 'label'),
+      node('p', 'Nice work. Your observations are ready when you are.', 'sentence'),
+      node('p', 'Hypotheses and variants are available in the private agent export. Review them with your agent before proposing any rule.', 'hint'),
+      button('Data & handoff', () => page('library')));
+    area.append(card);
+    return;
+  }
+
+  const current = deck.cards.find(item => item.id === round.order[round.cursor]);
+  const card = node('div', undefined, 'card');
+  if (current.context) card.append(node('div', current.context, 'label'));
+  card.append(node('p', current.sentence, 'sentence'));
+  area.append(card, node('p', 'How does this sentence read?', 'prompt'));
+  const scores = node('div', undefined, 'scores');
+  ['No', 'Needs a rewrite', 'Works', 'I’d write it'].forEach((label, index) => {
+    const choice = document.createElement('button');
+    choice.append(node('b', String(index + 1)), document.createTextNode(label));
+    choice.onclick = () => score(index + 1);
+    scores.append(choice);
+  });
+  area.append(scores, button('Skip this one', () => score(null)));
+  area.lastChild.style.marginTop = '12px';
+}
+
+function score(value) {
+  const round = Gym.round(state, active);
+  if (round.cursor >= round.order.length) return;
+  const id = round.order[round.cursor];
+  Gym.act(round, value);
+  if (window.GymBridge) GymBridge.recordRound(active, id, value === null ? 'skip' : 'score', value);
+  last = value === null ? null : { deck: active, id };
+  $('#after').hidden = !last;
+  if (last) {
+    $('#scored').textContent = `Saved ${value} / 4 · add a reason if you like`;
+    $('#reason').value = '';
+    $('#note').value = '';
+  }
+  save();
+  renderPractice();
+}
+
+$('#reason').onchange = () => {
+  if (last && state.rounds[last.deck].ratings[last.id]) {
+    state.rounds[last.deck].ratings[last.id].reason = $('#reason').value;
+    if (window.GymBridge) GymBridge.recordRound(last.deck, last.id, 'detail', state.rounds[last.deck].ratings[last.id]);
+    save();
+  }
+};
+$('#note').oninput = () => {
+  if (last && state.rounds[last.deck].ratings[last.id]) {
+    state.rounds[last.deck].ratings[last.id].note = $('#note').value;
+    if (window.GymBridge) GymBridge.recordRound(last.deck, last.id, 'detail', state.rounds[last.deck].ratings[last.id]);
+    save();
+  }
+};
+function undo() {
+  const round = Gym.round(state, active);
+  const id = round.history.at(-1)?.id;
+  if (Gym.undo(round)) {
+    if (window.GymBridge) GymBridge.recordRound(active, id, 'undo', null);
+    last = null;
+    $('#after').hidden = true;
+    save();
+    renderPractice();
+  }
+}
+$('#undo').onclick = undo;
+document.addEventListener('keydown', event => {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.repeat ||
+      event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
+  if (!$('#practice').hidden) {
+    if (/^[1-4]$/.test(event.key)) score(Number(event.key));
+    else if (event.key.toLowerCase() === 's') score(null);
+    else if (event.key.toLowerCase() === 'z') undo();
+  }
+});
+
+function renderLibrary() {
+  const list = $('#round-list');
+  list.replaceChildren();
+  state.decks.forEach(deck => {
+    const round = Gym.round(state, deck.id);
+    const entry = node('div', undefined, 'entry');
+    entry.append(node('strong', deck.title),
+      node('p', `${round.cursor} of ${deck.cards.length} seen · ${Object.keys(round.ratings).length} scored`, 'status'),
+      button('Open round', () => {
+        active = deck.id;
+        state.selectedRound = deck.id;
+        last = null;
+        $('#after').hidden = true;
+        save();
+        page('practice');
+      }));
+    list.append(entry);
+  });
+  const rules = $('#rules');
+  rules.replaceChildren();
+  state.rules.forEach((rule, index) => {
+    const entry = node('div', undefined, 'entry');
+    entry.append(node('strong', rule.rule),
+      node('p', `Scope: ${rule.scope}\nPositive: ${rule.positive}\nCounterexample: ${rule.counterexample}`),
+      button('Remove / revise', () => {
+        if (confirm('Remove this rule? You can add a revised rule.')) {
+          state.rules.splice(index, 1);
+          save();
+          if (window.GymBridge) GymBridge.scheduleContext();
+          renderLibrary();
+        }
+      }));
+    rules.append(entry);
+  });
+  $('#hypotheses').value = state.hypotheses;
+}
+
+$('#hypotheses').oninput = event => {
+  state.hypotheses = event.target.value;
+  save();
+  if (window.GymBridge) GymBridge.scheduleContext();
+};
+$('#add-rule').onclick = () => {
+  const rule = $('#rule').value.trim();
+  const scope = $('#scope').value.trim();
+  const positive = $('#positive').value.trim();
+  const counterexample = $('#counterexample').value.trim();
+  if (!rule || !scope || !positive || !counterexample) {
+    alert('Add the rule, scope, positive example, and counterexample.');
+    return;
+  }
+  state.rules.push({ rule, scope, positive, counterexample });
+  if (window.GymBridge) GymBridge.scheduleContext();
+  ['rule', 'scope', 'positive', 'counterexample'].forEach(id => $('#' + id).value = '');
+  save();
+  renderLibrary();
+};
+
+$('#import-file').onchange = async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > Gym.MAX) {
+    $('#import-status').textContent = 'File exceeds 5 MB.';
+    return;
+  }
+  $('#import-text').value = await file.text();
+};
+$('#import').onclick = () => {
+  try {
+    const payload = Gym.parse($('#import-text').value);
+    if (payload.kind === 'writing-gym-deck') {
+      Gym.validateDeck(payload);
+      if (state.decks.some(deck => deck.id === payload.id)) {
+        throw Error('Deck ID already exists; existing work was not changed.');
+      }
+      const ids = new Set(state.decks.flatMap(deck => deck.cards.map(card => card.id)));
+      if (payload.cards.some(card => ids.has(card.id))) throw Error('A card ID already exists in another deck.');
+      state.decks.push(payload);
+      save();
+      $('#import-status').textContent = 'Deck imported. Open it below.';
+      renderLibrary();
+    } else if (payload.kind === 'writing-gym-backup') {
+      const restored = Gym.validateBackup(payload);
+      if (!confirm('Replace all local data with this backup? Export a backup first if needed.')) return;
+      state = restored;
+      restoreActiveRound();
+      last = null;
+      $('#after').hidden = true;
+      save();
+      $('#import-status').textContent = 'Backup restored.';
+      renderLibrary();
+    } else {
+      throw Error('Expected a version 1 deck or backup.');
+    }
+  } catch (error) {
+    $('#import-status').textContent = error.message;
+  }
+};
+
+function preview(payload, name) {
+  $('#export-preview').value = JSON.stringify(payload, null, 2);
+  previewName = name;
+  $('#download').disabled = false;
+}
+$('#preview-agent').onclick = () => preview(Gym.handoff(state), 'writing-gym-handoff.json');
+$('#preview-backup').onclick = () => preview({ kind: 'writing-gym-backup', version: 1, state }, 'writing-gym-backup.json');
+$('#download').onclick = () => {
+  const url = URL.createObjectURL(new Blob([$('#export-preview').value], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = previewName;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+$('#reset').onclick = () => {
+  if (confirm('Delete all Writing Gym data in this browser? Export a backup first.')) {
+    localStorage.removeItem(KEY);
+    state = Gym.blank([]);
+    restoreActiveRound();
+    last = null;
+    $('#after').hidden = true;
+    $('#export-preview').value = '';
+    $('#download').disabled = true;
+    renderLibrary();
+  }
+};
+
+const article = () => state.article;
+$$('[data-article]').forEach(element => element.oninput = () => {
+  article()[element.dataset.article] = element.value;
+  save();
+  if (window.GymBridge) GymBridge.scheduleContext();
+});
+$('#candidate').oninput = event => {
+  const draft = article();
+  if (draft.candidateScore && draft.candidateScore <= 2 && draft.candidate.trim()) {
+    draft.attempts.push({ sentence: draft.candidate, score: draft.candidateScore, section: draft.section });
+    delete draft.bridgeProposalId;
+  }
+  draft.candidate = event.target.value;
+  draft.candidateScore = null;
+  save();
+  if (window.GymBridge) GymBridge.scheduleContext();
+  renderArticleStatus();
+};
+$('#section-name').oninput = event => {
+  article().section = event.target.value;
+  save();
+  if (window.GymBridge) GymBridge.scheduleContext();
+  renderArticleStatus();
+};
+$('#new-article').onclick = () => {
+  if ((article().topic || article().candidate || article().lines.length) &&
+      !confirm('Start a new private article? Export a backup first if needed.')) return;
+  state.article = Gym.blank([]).article;
+  save();
+  if (window.GymBridge) GymBridge.scheduleContext();
+  renderArticle();
+};
+$('#demo').onclick = () => {
+  if ((article().topic || article().lines.length) &&
+      !confirm('Replace this article with the generic practice example? Export a backup first if needed.')) return;
+  state.article = {
+    demo: true,
+    topic: 'A small release checklist',
+    audience: 'A software team',
+    claim: 'A short checklist can make routine releases easier to coordinate.',
+    evidence: 'Example premise for practice only; verify any real claim.',
+    outline: 'Opening: name the coordination problem. Middle: describe a short checklist. Close: note its limits.',
+    candidate: 'A release takes coordination across several small steps.',
+    candidateScore: null,
+    section: 'Opening',
+    lines: [],
+    attempts: [],
+    demoQueue: [
+      { section: 'Middle', sentence: 'A short checklist can make those steps visible to everyone involved.' },
+      { section: 'Close', sentence: 'The checklist still needs to change when the release process changes.' }
+    ]
+  };
+  save();
+  renderArticle();
+};
+$('#article-scores').onclick = event => {
+  const choice = event.target.closest('[data-score]');
+  if (!choice) return;
+  if (!article().candidate.trim()) {
+    alert('Add a candidate sentence first.');
+    return;
+  }
+  article().candidateScore = Number(choice.dataset.score);
+  if (window.GymBridge) GymBridge.recordArticle('score', article());
+  save();
+  renderArticleStatus();
+};
+function renderArticleStatus() {
+  const score = article().candidateScore;
+  $('#article-rating').textContent = score
+    ? `Scored ${score} / 4. ${score < 3 ? 'Try a different line.' : 'Accept separately if this is the line you want.'}`
+    : 'Choose a score. Scores 1–2 call for a different line; 3–4 can be accepted separately.';
+  $('#accept').disabled = !(score >= 3 && article().candidate.trim() && article().section.trim());
+}
+$('#try-again').onclick = () => {
+  const draft = article();
+  if (draft.candidate.trim()) {
+    draft.attempts.push({ sentence: draft.candidate, score: draft.candidateScore, section: draft.section });
+  }
+  draft.candidate = '';
+  draft.candidateScore = null;
+  delete draft.bridgeProposalId;
+  save();
+  if (window.GymBridge) GymBridge.scheduleContext();
+  renderArticle();
+};
+$('#accept').onclick = () => {
+  const draft = article();
+  if (!(draft.candidateScore >= 3 && draft.candidate.trim() && draft.section.trim())) return;
+  if (window.GymBridge) GymBridge.recordArticle('accept', draft);
+  const line = {
+    id: 'line-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    section: draft.section, sentence: draft.candidate, score: draft.candidateScore
+  };
+  if (Number.isInteger(draft.editIndex)) {
+    draft.lines.splice(draft.editIndex, 0, line);
+    delete draft.editIndex;
+  } else {
+    draft.lines.push(line);
+  }
+  draft.candidate = '';
+  draft.candidateScore = null;
+  delete draft.bridgeProposalId;
+  if (draft.demoQueue?.length) {
+    const next = draft.demoQueue.shift();
+    draft.candidate = next.sentence;
+    draft.section = next.section;
+  }
+  save();
+  if (window.GymBridge) GymBridge.scheduleContext();
+  renderArticle();
+};
+
+function renderArticle() {
+  const draft = article();
+  $$('[data-article]').forEach(element => element.value = draft[element.dataset.article] || '');
+  $('#candidate').value = draft.candidate || '';
+  $('#section-name').value = draft.section || '';
+  $('#previous').textContent = (Number.isInteger(draft.editIndex)
+    ? draft.lines[draft.editIndex - 1] : draft.lines.at(-1))?.sentence || 'None yet.';
+  renderArticleStatus();
+
+  const list = $('#manuscript');
+  list.replaceChildren();
+  if (!draft.lines.length) list.append(node('p', 'No accepted lines yet.', 'hint'));
+  // Only join consecutive lines. A later return to a section stays in place.
+  const groups = [];
+  for (const line of draft.lines) {
+    let group = groups.at(-1);
+    if (!group || group.section !== line.section) {
+      group = { section: line.section, lines: [] };
+      groups.push(group);
+    }
+    group.lines.push(line);
+  }
+  for (const group of groups) {
+    const entry = node('div', undefined, 'entry');
+    entry.append(node('strong', group.section), node('p', group.lines.map(line => line.sentence).join(' ')));
+    for (const line of group.lines) {
+      entry.append(button('Reopen: ' + line.sentence.slice(0, 35), () => {
+        if (Number.isInteger(draft.editIndex)) {
+          alert('Finish the reopened line first.');
+          return;
+        }
+        if (draft.candidate.trim() && !confirm('Replace the current candidate with this line?')) return;
+        if (!confirm('Reopen this accepted line? It will leave the manuscript until accepted again.')) return;
+        if (draft.candidateScore && draft.candidateScore <= 2 && draft.candidate.trim()) {
+          draft.attempts.push({ sentence: draft.candidate, score: draft.candidateScore, section: draft.section });
+        }
+        draft.editIndex = draft.lines.findIndex(item => item.id === line.id);
+        draft.lines.splice(draft.editIndex, 1);
+        draft.candidate = line.sentence;
+        draft.section = line.section;
+        draft.candidateScore = null;
+        delete draft.bridgeProposalId;
+        save();
+        if (window.GymBridge) GymBridge.scheduleContext();
+        renderArticle();
+      }));
+    }
+    list.append(entry);
+  }
+  $('#whole').replaceChildren();
+}
+$('#whole-read').onclick = () => {
+  $('#whole').replaceChildren(node('p', article().lines.map(line => line.sentence).join(' ')));
+};
+
+$('#load-demo').onclick = () => {
+  const ids = new Set(state.decks.flatMap(deck => deck.cards.map(card => card.id)));
+  for (const deck of FIXTURES) {
+    if (!state.decks.some(existing => existing.id === deck.id) &&
+        !deck.cards.some(card => ids.has(card.id))) state.decks.push(deck);
+  }
+  active = FIXTURES[0].id;
+  state.selectedRound = active;
+  save();
+  renderPractice();
+};
+restoreActiveRound();
 renderPractice();
