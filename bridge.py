@@ -12,6 +12,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import parse_qs, urlsplit
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parent
@@ -65,6 +66,7 @@ class Bridge:
         self.path = HOME / 'queue.json'
         self.condition = threading.Condition()
         self.watchers = 0
+        self.pairing_armed = False
         self.data = json.loads(self.path.read_text()) if self.path.exists() else {
             'sessionId': secrets.token_hex(16), 'decks': [], 'proposals': [], 'events': [], 'context': {}}
 
@@ -112,6 +114,39 @@ class Handler(BaseHTTPRequestHandler):
                                        'proposals': bridge.data['proposals'], 'listening': bridge.watchers > 0})
             if self.path == '/api/status':
                 return self.send(200, bridge.data)
+            parsed = urlsplit(self.path)
+            query = parse_qs(parsed.query)
+            if parsed.path == '/api/agent-state':
+                deck_id = query.get('deck', [''])[0]
+                decks = bridge.data['decks']
+                selected = next((deck for deck in decks if deck['id'] == deck_id), None) if deck_id else None
+                if deck_id and not selected:
+                    return self.send(404, {'error': 'Unknown deck'})
+                context = bridge.data['context']
+                return self.send(200, {'sessionId': bridge.data['sessionId'],
+                    'decks': [{'id': d['id'], 'title': d['title'], 'cards': len(d['cards'])} for d in decks[:100]],
+                    'moreDecks': len(decks) > 100, 'deck': selected, 'context': context,
+                    'eventCount': len(bridge.data['events'])})
+            if parsed.path == '/api/feedback':
+                try:
+                    after = max(0, int(query.get('after', ['0'])[0]))
+                    limit = min(100, max(1, int(query.get('limit', ['50'])[0])))
+                except ValueError:
+                    return self.send(400, {'error': 'Invalid cursor or limit'})
+                if after > len(bridge.data['events']):
+                    return self.send(400, {'error': 'Cursor is beyond the event log'})
+                candidates = bridge.data['events'][after:after + limit]
+                events = []
+                size = 0
+                for event in candidates:
+                    item_size = len(json.dumps(event, ensure_ascii=False).encode())
+                    if events and size + item_size > 200_000:
+                        break
+                    events.append(event)
+                    size += item_size
+                cursor = after + len(events)
+                return self.send(200, {'events': events, 'cursor': cursor,
+                                       'hasMore': cursor < len(bridge.data['events'])})
             if self.path.startswith('/api/watch?'):
                 try:
                     after = max(0, int(self.path.split('after=', 1)[1].split('&', 1)[0]))
@@ -126,6 +161,16 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(404, {'error': 'Not found'})
 
     def do_POST(self):
+        if self.path == '/api/pair':
+            origin = self.headers.get('Origin')
+            if (not self.allowed(False) or origin != 'http://' + self.server.host or
+                    self.headers.get('Sec-Fetch-Site') != 'same-origin'):
+                return self.send(403, {'error': 'Pairing requires the local app page'})
+            with self.server.bridge.condition:
+                if not self.server.bridge.pairing_armed:
+                    return self.send(403, {'error': 'Run the start command to enable pairing'})
+                self.server.bridge.pairing_armed = False
+            return self.send(200, {'token': self.server.token})
         if not self.allowed(True):
             return self.send(403, {'error': 'Not paired or invalid local origin'})
         try:
@@ -138,7 +183,11 @@ class Handler(BaseHTTPRequestHandler):
             bridge = self.server.bridge
             with bridge.condition:
                 data = bridge.data
-                if self.path == '/api/decks':
+                if self.path == '/api/arm-pair':
+                    bridge.pairing_armed = True
+                elif self.path == '/api/shutdown':
+                    threading.Timer(0.1, self.server.shutdown).start()
+                elif self.path == '/api/decks':
                     validate_deck(payload)
                     existing = {card['id'] for deck in data['decks'] for card in deck['cards']}
                     if any(deck['id'] == payload['id'] for deck in data['decks']) or any(card['id'] in existing for card in payload['cards']):
@@ -169,12 +218,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {'error': str(error)})
 
 
-def request(method, path, payload=None):
+def request(method, path, payload=None, timeout=25):
     session = json.loads((HOME / 'session.json').read_text())
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode()
     req = urllib.request.Request('http://127.0.0.1:%s%s' % (session['port'], path), data=data, method=method,
                                  headers={'Authorization': 'Bearer ' + session['token'], 'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=25) as response:
+    with urllib.request.urlopen(req, timeout=timeout) as response:
         return json.load(response)
 
 
@@ -183,6 +232,7 @@ def main():
     commands = parser.add_subparsers(dest='command', required=True)
     serve = commands.add_parser('serve', help='Start private local app and queue')
     serve.add_argument('--port', type=int, default=8765)
+    serve.add_argument('--quiet', action='store_true', help=argparse.SUPPRESS)
     enqueue = commands.add_parser('enqueue', help='Send a version 1 deck from file, or - for stdin')
     enqueue.add_argument('file')
     proposal = commands.add_parser('propose', help='Send one Article Lab candidate')
@@ -208,9 +258,10 @@ def main():
         server.token = secrets.token_urlsafe(32)
         server.bridge = bridge
         atomic_json(HOME / 'session.json', {'port': server.server_address[1], 'token': server.token})
-        print('Open this private pairing link in the same computer browser:', flush=True)
-        print('http://%s/#pair=%s' % (server.host, server.token), flush=True)
-        print('Keep this process running. Data stays in %s.' % HOME, flush=True)
+        if not args.quiet:
+            print('Open this private pairing link in the same computer browser:', flush=True)
+            print('http://%s/#pair=%s' % (server.host, server.token), flush=True)
+            print('Keep this process running. Data stays in %s.' % HOME, flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:

@@ -15,7 +15,7 @@ async function main() {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
 
-  assert.match(await page.locator('#card-area').innerText(), /Waiting for Dex/);
+  assert.match(await page.locator('#card-area').innerText(), /Waiting for your agent/);
   await page.locator('#load-demo').click();
   assert.match(await page.locator('#progress').innerText(), /round 1 · 1 \/ 12/);
   assert.equal(await page.getByRole('button', { name: 'Article Lab' }).isVisible(), true);

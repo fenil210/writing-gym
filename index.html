@@ -28,10 +28,11 @@
       <div class="eyebrow"><span>CALIBRATION</span><span id="progress"></span></div>
       <div class="progress"><i id="bar"></i></div>
       <div id="bridge-status" class="bridge-status" role="status">Checking for a local agent bridge…</div>
+      <button id="pair-browser" class="quiet" hidden>Pair this browser</button>
       <div id="card-area"></div>
       <div class="demo-controls">
         <button id="load-demo" class="quiet">Try isolated demo rounds</button>
-        <span>Demo scores stay in this browser and are not sent to Dex.</span>
+        <span>Demo scores stay in this browser and are not sent to your agent.</span>
       </div>
       <div id="after" class="after" hidden>
         <span id="scored"></span>
@@ -62,7 +63,7 @@
         </div>
         <button id="new-article" class="quiet">Start a private article</button>
         <button id="demo" class="quiet">Load isolated generic example</button>
-        <p class="hint">The generic example stays in this browser and is not sent to Dex.</p>
+        <p class="hint">The generic example stays in this browser and is not sent to your agent.</p>
       </div>
       <div class="panel">
         <h2>Next sentence</h2>
@@ -119,7 +120,7 @@
           <button id="download" class="quiet" disabled>Download preview</button>
         </div>
         <textarea id="export-preview" readonly aria-label="Export preview" placeholder="Export preview appears here"></textarea>
-        <button id="reset" class="danger">Reset all local data</button>
+        <button id="reset" class="danger">Reset browser data</button>
       </div>
     </section>
   </main>

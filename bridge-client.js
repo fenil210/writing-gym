@@ -8,7 +8,8 @@
     sessionStorage.setItem('writing-gym-pair', pairing);
     history.replaceState(null, '', location.pathname + location.search);
   }
-  const token = sessionStorage.getItem('writing-gym-pair');
+  let token = sessionStorage.getItem('writing-gym-pair');
+  let polling = false;
   let sessionId = state.bridgeSessionId || null;
   let connected = false;
   let sending = false;
@@ -94,6 +95,7 @@
       const remote = await request('/api/state');
       const wasConnected = connected;
       connected = true;
+      document.querySelector('#pair-browser').hidden = true;
       sessionId = remote.sessionId;
       // Pending feedback from a different session is retained, never sent to this one.
       if (state.bridgeSessionId && state.bridgeSessionId !== sessionId && state.bridgeOutbox?.length) {
@@ -145,25 +147,52 @@
       if (added && !document.querySelector('#practice').hidden) renderPractice();
       if (added && !document.querySelector('#library').hidden) renderLibrary();
       if (collision) {
-        message('A Dex round conflicts with a local deck or card ID. It was not imported; ask Dex for new IDs.');
+        message('A agent round conflicts with a local deck or card ID. It was not imported; ask your agent for new IDs.');
       } else if (remote.listening) {
         message('Local bridge connected · an agent listener is waiting for feedback. Agent rounds are in Data & handoff.');
       } else {
-        message('Local bridge connected · no agent is currently waiting. Feedback is saved to the bridge for Dex to read. Agent rounds are in Data & handoff.');
+        message('Local bridge connected · no agent is currently waiting. Feedback is saved to the bridge for your agent to read. Agent rounds are in Data & handoff.');
       }
       flush();
       if (!wasConnected) scheduleContext();
     } catch {
       connected = false;
-      message('Waiting for the local bridge. Start it and open its private pairing link; feedback already queued in this browser will retry.');
+      document.querySelector('#pair-browser').hidden = false;
+      message('Waiting for the local bridge. Run the start command, then pair this browser; queued feedback will retry.');
     }
   }
 
+  function startPolling() {
+    if (polling) return;
+    polling = true;
+    poll();
+    setInterval(poll, 2000);
+  }
+
+  const pairButton = document.querySelector('#pair-browser');
+  pairButton.onclick = async () => {
+    try {
+      const response = await fetch('/api/pair', { method: 'POST' });
+      if (!response.ok) throw new Error('Pairing not enabled');
+      token = (await response.json()).token;
+      sessionStorage.setItem('writing-gym-pair', token);
+      pairButton.hidden = true;
+      if (polling) poll();
+      else startPolling();
+    } catch {
+      message('Pairing is not ready. Run python3 gym.py start, then try again.');
+    }
+  };
+
   window.GymBridge = { recordRound, recordArticle, scheduleContext };
-  if (!token || location.protocol !== 'http:' || location.hostname !== '127.0.0.1') {
-    message('Waiting for Dex. Start the local bridge and open its private pairing link. The demo below is separate.');
+  if (location.protocol !== 'http:' || location.hostname !== '127.0.0.1') {
+    message('Waiting for your agent. Run python3 gym.py start on this computer. The demo below is separate.');
     return;
   }
-  poll();
-  setInterval(poll, 2000);
+  if (!token) {
+    pairButton.hidden = false;
+    message('Waiting for your agent. Run python3 gym.py start, then pair this browser.');
+    return;
+  }
+  startPolling();
 })();

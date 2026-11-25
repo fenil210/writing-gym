@@ -58,10 +58,10 @@ $$('nav button').forEach(element => element.onclick = () => page(element.dataset
 function renderPractice() {
   const deck = state.decks.find(item => item.id === active) || state.decks[0];
   if (!deck) {
-    $('#progress').textContent = 'Waiting for Dex';
+    $('#progress').textContent = 'Waiting for your agent';
     $('#bar').style.width = '0%';
     $('#undo').disabled = true;
-    $('#card-area').replaceChildren(node('div', 'Waiting for Dex to send a private round.', 'card'));
+    $('#card-area').replaceChildren(node('div', 'Waiting for your agent to send a private round.', 'card'));
     return;
   }
   active = deck.id;

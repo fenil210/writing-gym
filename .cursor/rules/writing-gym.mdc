@@ -1,0 +1,5 @@
+---
+description: Shared Writing Gym agent entry point
+alwaysApply: true
+---
+Read and follow the repository-root AGENTS.md and its linked agent runbook. The writer's current instructions take precedence.
